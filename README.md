@@ -9,6 +9,10 @@ Check out the demo video to see the GitHub Repository Answer Engine in action:
 
 [![Demo Video](https://img.youtube.com/vi/PeuAYAhO8GE/0.jpg)](https://youtu.be/PeuAYAhO8GE?si=_liM3ZgmlNcHFcNu)
 
+## Try It Now
+
+**Live Demo**: [GitLore - GitHub Answer Engine](https://github-answer-engine-n9gs.vercel.app)
+
 ## Architecture Design
 
 ![GitLoreDesign](public/GitLoreDesign.png)
