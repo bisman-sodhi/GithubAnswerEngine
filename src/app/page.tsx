@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, KeyboardEvent } from "react";
+import { useState, KeyboardEvent, useEffect } from "react";
 
 interface Message {
   id: string;
@@ -27,7 +27,28 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [indexedRepos, setIndexedRepos] = useState<Set<string>>(new Set());
+  const [indexedRepos, setIndexedRepos] = useState<Set<string>>(() => {
+    // Initialize from localStorage on component mount
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('indexedRepos');
+      if (saved) {
+        try {
+          // Convert the saved array back to a Set
+          return new Set(JSON.parse(saved));
+        } catch (err) {
+          console.error('Error parsing saved repos:', err);
+        }
+      }
+    }
+    return new Set();
+  });
+
+  // Save to localStorage whenever indexedRepos changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && indexedRepos.size > 0) {
+      localStorage.setItem('indexedRepos', JSON.stringify([...indexedRepos]));
+    }
+  }, [indexedRepos]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,17 +83,28 @@ export default function Home() {
           body: JSON.stringify(repoInfo)
         });
 
+        const indexResult = await indexResponse.json();
+
         if (!indexResponse.ok) {
           throw new Error('Failed to index repository');
         }
 
         setIndexedRepos(prev => new Set(prev).add(`${repoInfo.owner}/${repoInfo.repo}`));
         
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          content: `Repository indexed successfully! Now answering your question...`,
-          role: "assistant"
-        }]);
+        // Check if it was already indexed
+        if (indexResult.alreadyIndexed) {
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            content: `Repository was already indexed. Now answering your question...`,
+            role: "assistant"
+          }]);
+        } else {
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            content: `Repository indexed successfully! Now answering your question...`,
+            role: "assistant"
+          }]);
+        }
       }
 
       // Get answer from API
@@ -82,7 +114,8 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage]
+          messages: [...messages, userMessage],
+          ...(repoInfo && { owner: repoInfo.owner, repo: repoInfo.repo })
         }),
       });
 
@@ -141,53 +174,55 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-black">
       {/* Chat area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full space-y-4">
-            <h1 className="text-3xl font-semibold text-white">Hello there!</h1>
-            <p className="text-xl text-gray-400">How can I help you today?</p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mt-8">
-              {exampleQuestions.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setInput(q.title + " " + q.subtitle);
-                  }}
-                  className="text-left p-4 rounded-xl bg-[#1a1a1a] hover:bg-[#222] transition-colors"
-                >
-                  <p className="text-white">{q.title}</p>
-                  <p className="text-gray-400">{q.subtitle}</p>
-                </button>
-              ))}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 w-full relative">
+        <div className="max-w-4xl mx-auto w-full">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full space-y-4">
+              <h1 className="text-3xl font-semibold text-white">Hello there!</h1>
+              <p className="text-xl text-gray-400">How can I help you today?</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mt-8">
+                {exampleQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setInput(q.title + " " + q.subtitle);
+                    }}
+                    className="text-left p-4 rounded-xl bg-[#1a1a1a] hover:bg-[#222] transition-colors"
+                  >
+                    <p className="text-white">{q.title}</p>
+                    <p className="text-gray-400">{q.subtitle}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
-            >
-              {message.role === "user" ? (
-                <div className="max-w-[70%] rounded-2xl p-3 bg-[#2A2A2A] text-[#E6E6E6] rounded-br-none">
-                  {message.content}
-                </div>
-              ) : (
-                <div className="max-w-[70%] text-[#E6E6E6] px-1">
-                  {message.content}
-                </div>
-              )}
+          ) : (
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
+              >
+                {message.role === "user" ? (
+                  <div className="max-w-[70%] rounded-2xl p-3 bg-[#2A2A2A] text-[#E6E6E6] rounded-br-none">
+                    {message.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[70%] text-[#E6E6E6] px-1">
+                    {message.content}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="max-w-[70%] text-[#E6E6E6] px-1">
+                Thinking...
+              </div>
             </div>
-          ))
-        )}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[70%] text-[#E6E6E6] px-1">
-              Thinking...
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Input area */}
