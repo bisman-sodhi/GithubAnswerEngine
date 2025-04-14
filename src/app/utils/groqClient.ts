@@ -18,15 +18,24 @@ interface ChatMessage {
 
 const vectorStore = new VectorStore();
 
-export async function getGroqResponse(message: string, owner?: string, repo?: string, previousMessages: {role: string, content: string}[] = []): Promise<string> {
+interface EnhancedContext {
+  fileReferences?: string[];
+  intent?: string;
+}
+
+export async function getGroqResponse(
+  message: string,
+  owner?: string,
+  repo?: string,
+  previousMessages: Array<{ role: string; content: string }> = [],
+  enhancedContext: EnhancedContext = {}
+): Promise<string> {
   try {
     // Determine the namespace if owner and repo are provided
-    const namespace = owner && repo ? `${owner}/${repo}` : '';
+    const namespace = owner && repo ? `${owner}/${repo}` : undefined;
     
     console.log(`Processing query for repository: ${namespace || 'unknown'}`);
     
-    // Instead of rigid pattern matching, use a more flexible approach
-    // Check common file extensions in the query
     const commonExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.go', '.rs', '.php', '.rb', '.html', '.css', '.json'];
     let potentialFiles: string[] = [];
     
@@ -86,8 +95,16 @@ export async function getGroqResponse(message: string, owner?: string, repo?: st
     }
 
     // Format the context with file information but limit to prevent token overflow
-    // Prioritize documentation and important files
     const sortedMatches = [...result.matches].sort((a, b) => {
+        // Complex sorting logic for matches
+        // Prioritizes:
+        // 1. Exact file matches
+        // 2. Path matches
+        // 3. Documentation
+        // 4. Important files
+        // 5. UI files
+        // 6. Score-based ranking
+      
       // If we detected potential filenames, prioritize those matches
       if (potentialFiles.length > 0) {
         for (const file of potentialFiles) {
@@ -162,7 +179,7 @@ ${truncatedContent}`;
       systemPromptPrefix += `Your task is to analyze the repository's code and documentation to answer questions about its purpose, architecture, and implementation details.`;
     }
 
-    const systemPrompt = `${systemPromptPrefix}
+    let systemPrompt = `You are a helpful AI assistant that helps users understand code in GitHub repositories.
 
     Available context from the repository files:
     ${contextItems.join('\n\n')}
@@ -175,6 +192,19 @@ ${truncatedContent}`;
     5. Prioritize information from documentation files, but also use code context when appropriate
     6. Be precise about file paths and function names
     7. Remember previous messages in the conversation for context`;
+
+    // Add file references to context if available
+    if (enhancedContext.fileReferences?.length) {
+      const fileContext = enhancedContext.fileReferences
+        .map(file => `- ${file}`)
+        .join('\n');
+      systemPrompt += `\nRelevant files:\n${fileContext}`;
+    }
+
+    // Add intent to context if available
+    if (enhancedContext.intent) {
+      systemPrompt += `\nUser intent: ${enhancedContext.intent}`;
+    }
 
     // Build the messages array with conversation history
     const conversationMessages: ChatMessage[] = [

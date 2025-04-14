@@ -1,26 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getGroqResponse } from '@/app/utils/groqClient';
 
+interface ChatRequest {
+  messages: Array<{ role: string; content: string }>;
+  owner?: string;
+  repo?: string;
+  fileReferences?: string[];
+  intent?: string;
+}
+
 export async function POST(req: Request) {
   try {
-    const { messages, owner, repo } = await req.json();
+    const { messages, owner, repo, fileReferences, intent }: ChatRequest = await req.json();
     const lastMessage = messages[messages.length - 1];
     
     // Convert previous messages to the format expected by getGroqResponse
     const previousMessages = messages
-      .slice(0, -1) // Exclude the last message (current one)
+      .slice(0, -1)
       .map((msg: { role: string; content: string }) => ({
         role: msg.role,
         content: msg.content
       }));
     
     try {
-      // Get response from Groq with repository context and conversation history
+      // Get response from Groq with enhanced context
       const response = await getGroqResponse(
         lastMessage.content, 
         owner, 
         repo, 
-        previousMessages
+        previousMessages,
+        {
+          fileReferences,
+          intent
+        }
       );
       
       console.log(`Response for ${owner}/${repo}:`, response.substring(0, 100) + '...');

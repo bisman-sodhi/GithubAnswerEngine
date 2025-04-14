@@ -1,26 +1,13 @@
 "use client";
 
-import { useState, KeyboardEvent, useEffect } from "react";
+import { useState, KeyboardEvent, useEffect, useRef } from "react";
+import { ConversationAnalyzer } from '@/app/utils/conversationAnalyzer';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   id: string;
   content: string;
   role: "user" | "assistant";
-}
-
-// Helper function to extract repo info from message
-function extractRepoInfo(message: string): { owner: string; repo: string } | null {
-  // Match patterns like "owner/repo" or "tell me about owner/repo"
-  const repoPattern = /(?:^|\s)([a-zA-Z0-9-]+)\/([a-zA-Z0-9-._]+)(?:\s|$)/;
-  const match = message.match(repoPattern);
-  
-  if (match) {
-    return {
-      owner: match[1],
-      repo: match[2]
-    };
-  }
-  return null;
 }
 
 export default function Home() {
@@ -42,6 +29,14 @@ export default function Home() {
     }
     return new Set();
   });
+
+  // Initialize conversation analyzer
+  const analyzerRef = useRef<ConversationAnalyzer>(null);
+  useEffect(() => {
+    if (!analyzerRef.current) {
+      analyzerRef.current = new ConversationAnalyzer();
+    }
+  }, []);
 
   // Save to localStorage whenever indexedRepos changes
   useEffect(() => {
@@ -66,48 +61,54 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const repoInfo = extractRepoInfo(userMessage.content);
+      // Analyze the message using ConversationAnalyzer
+      const analysis = await analyzerRef.current?.analyzeMessage(input);
       
-      // If this is a new repository mentioned, index it first
-      if (repoInfo && !indexedRepos.has(`${repoInfo.owner}/${repoInfo.repo}`)) {
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          content: `Indexing repository ${repoInfo.owner}/${repoInfo.repo}...`,
-          role: "assistant"
-        }]);
+      if (!analysis) {
+        throw new Error('Failed to analyze message');
+      }
 
-        // Index the repository
-        const indexResponse = await fetch('/api/index-repo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(repoInfo)
-        });
-
-        const indexResult = await indexResponse.json();
-
-        if (!indexResponse.ok) {
-          throw new Error('Failed to index repository');
-        }
-
-        setIndexedRepos(prev => new Set(prev).add(`${repoInfo.owner}/${repoInfo.repo}`));
+      // Handle repository indexing if needed
+      if (analysis.repository && analysis.requiresIndexing) {
+        const repoKey = `${analysis.repository.owner}/${analysis.repository.repo}`;
         
-        // Check if it was already indexed
-        if (indexResult.alreadyIndexed) {
+        if (!indexedRepos.has(repoKey)) {
           setMessages(prev => [...prev, {
             id: Date.now().toString(),
-            content: `Repository was already indexed. Now answering your question...`,
+            content: `Indexing repository ${repoKey}...`,
             role: "assistant"
           }]);
-        } else {
+
+          const indexResponse = await fetch('/api/index-repo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              owner: analysis.repository.owner,
+              repo: analysis.repository.repo
+            })
+          });
+
+          const indexResult = await indexResponse.json();
+
+          if (!indexResponse.ok) {
+            throw new Error('Failed to index repository');
+          }
+
+          setIndexedRepos(prev => new Set(prev).add(repoKey));
+          
+          const indexMessage = indexResult.alreadyIndexed
+            ? `Repository was already indexed. Now answering your question...`
+            : `Repository indexed successfully! Now answering your question...`;
+            
           setMessages(prev => [...prev, {
             id: Date.now().toString(),
-            content: `Repository indexed successfully! Now answering your question...`,
+            content: indexMessage,
             role: "assistant"
           }]);
         }
       }
 
-      // Get answer from API
+      // Get answer from API with enhanced context
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -115,7 +116,12 @@ export default function Home() {
         },
         body: JSON.stringify({
           messages: [...messages, userMessage],
-          ...(repoInfo && { owner: repoInfo.owner, repo: repoInfo.repo })
+          ...(analysis.repository && {
+            owner: analysis.repository.owner,
+            repo: analysis.repository.repo
+          }),
+          fileReferences: analysis.fileReferences,
+          intent: analysis.intent
         }),
       });
 
@@ -125,12 +131,16 @@ export default function Home() {
         throw new Error(data.error || 'Failed to get response');
       }
 
-      // Add assistant's response
-      setMessages(prev => [...prev, {
+      const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: data.response,
-        role: "assistant"
-      }]);
+        role: "assistant" as const
+      };
+
+      // Update conversation context with the response
+      analyzerRef.current?.updateContext(data.response);
+
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
@@ -173,6 +183,13 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen bg-black">
+      {/* Header */}
+      <div className="bg-black border-b border-[#1a1a1a] p-4">
+        <h1 className="text-2xl font-bold text-white text-center">
+          GitLore: <span className="text-gray-400">Explore code; Discover insights; Ask fearlessly;</span>
+        </h1>
+      </div>
+
       {/* Chat area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 w-full relative">
         <div className="max-w-4xl mx-auto w-full">
@@ -209,7 +226,20 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="max-w-[70%] text-[#E6E6E6] px-1">
-                    {message.content}
+                    <ReactMarkdown
+                      components={{
+                        p: ({node, ...props}) => <p className="mb-4" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc pl-6 mb-4" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal pl-6 mb-4" {...props} />,
+                        li: ({node, ...props}) => <li className="mb-2" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                        em: ({node, ...props}) => <em className="italic" {...props} />,
+                        code: ({node, ...props}) => <code className="bg-[#2A2A2A] px-1 py-0.5 rounded" {...props} />,
+                        pre: ({node, ...props}) => <pre className="bg-[#2A2A2A] p-4 rounded-lg overflow-x-auto mb-4" {...props} />
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
                 )}
               </div>

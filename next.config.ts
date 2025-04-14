@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
     // Don't run TypeScript checking during build
     ignoreBuildErrors: true,
   },
+  env: {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+  },
 };
 
 export default nextConfig;
