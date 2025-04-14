@@ -9,7 +9,7 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const GROQ_MODEL = "llama-3.1-8b-instant";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -191,7 +191,10 @@ ${truncatedContent}`;
     4. If the context doesn't contain the specific information needed, say so clearly
     5. Prioritize information from documentation files, but also use code context when appropriate
     6. Be precise about file paths and function names
-    7. Remember previous messages in the conversation for context`;
+    7. Remember previous messages in the conversation for context
+    8. Only reference files that actually exist in the repository
+    9. If you're unsure about a file's existence, check the provided context first
+    10. When making suggestions, only suggest files that are present in the context`;
 
     // Add file references to context if available
     if (enhancedContext.fileReferences?.length) {
