@@ -1,6 +1,5 @@
 // src/app/utils/embeddingClient.ts
 import { pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
-import path from 'path';
 
 export class EmbeddingClient {
   private embedder: FeatureExtractionPipeline | null = null;
@@ -8,12 +7,8 @@ export class EmbeddingClient {
 
   private async initializeEmbedder() {
     if (!this.embedder) {
-      // Use process.cwd() to get the correct path in Vercel's serverless environment
-      const cacheDir = path.join(process.cwd(), 'public', 'models');
-      
       this.embedder = await pipeline('feature-extraction', this.modelName, {
         revision: 'main',
-        cache_dir: cacheDir,
         local_files_only: false,
         progress_callback: undefined,
       });
