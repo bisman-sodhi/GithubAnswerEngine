@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:skip-lint": "SKIP_ESLINT=true next build",
     "start": "next start",
     "lint": "next lint"
   },
