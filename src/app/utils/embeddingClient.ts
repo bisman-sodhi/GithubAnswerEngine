@@ -9,6 +9,9 @@ export class EmbeddingClient {
     if (!this.embedder) {
       this.embedder = await pipeline('feature-extraction', this.modelName, {
         revision: 'main',
+        cache_dir: undefined, // Disable disk caching
+        local_files_only: true, // Only use files that are already downloaded
+        progress_callback: undefined, // Disable progress callbacks
       });
     }
     return this.embedder;

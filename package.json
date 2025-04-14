@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "node scripts/download-model.js",
     "build": "next build",
     "build:skip-lint": "SKIP_ESLINT=true next build",
     "start": "next start",
