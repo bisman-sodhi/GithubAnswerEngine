@@ -2,6 +2,15 @@
 
 A powerful AI-powered chat application for exploring and understanding GitHub repositories. This tool allows users to ask questions about any GitHub repository and receive detailed, context-aware answers based on the repository's code and documentation.
 
+
+## Demo
+
+Check out the demo video to see the GitHub Repository Answer Engine in action:
+
+[![Demo Video](https://img.youtube.com/vi/PeuAYAhO8GE/0.jpg)](https://youtu.be/PeuAYAhO8GE?si=_liM3ZgmlNcHFcNu)
+
+## Architecture Design
+
 ![GitLoreDesign](public/GitLoreDesign.png)
 
 ## Features
