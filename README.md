@@ -2,6 +2,8 @@
 
 A powerful AI-powered chat application for exploring and understanding GitHub repositories. This tool allows users to ask questions about any GitHub repository and receive detailed, context-aware answers based on the repository's code and documentation.
 
+![GitLoreDesign](public/GitLoreDesign.png)
+
 ## Features
 
 - **Repository Indexing**: Automatically indexes GitHub repositories to understand their structure and content
@@ -9,22 +11,44 @@ A powerful AI-powered chat application for exploring and understanding GitHub re
 - **Smart Context Selection**: Prioritizes relevant files based on the query's intent
 - **File-Aware Responses**: Specialized handling for queries about specific files or code structures
 - **Context Persistence**: Maintains conversation history for better follow-up questions
+- **Dynamic Model Loading**: Automatically downloads and caches embedding models from HuggingFace
 - **Advanced LLM Integration**: Uses Groq's Llama-3.3-70b-versatile model for high-quality responses
+- **Serverless-Compatible**: Optimized for deployment in serverless environments like Vercel
+
+## Architecture
+
+The application is structured in three main layers:
+
+### Frontend Layer
+- Next.js App with a clean, minimalist interface
+- Chat-based user experience with question input and answer display
+- Responsive design for both desktop and mobile usage
+
+### API Layer
+- API routes for handling chat interactions
+- Repository indexing endpoint that processes GitHub repositories
+- Smart detection of whether a repository needs indexing
+
+### Service Layer
+- **GitHub Integration**: `githubClient.ts` fetches repository content via GitHub's API
+- **Embedding Generation**: `embeddingClient.ts` uses the `@xenova/transformers` library to dynamically load models from HuggingFace and generate embeddings
+- **Vector Storage**: `vectorStore.ts` handles storage and retrieval of embeddings in Pinecone
+- **LLM Processing**: `groqClient.ts` manages communication with Groq's LLM API for answer generation
 
 ## How It Works
 
-1. **Repository Analysis**: When a user mentions a GitHub repository, the system automatically indexes it
-2. **Vector Storage**: Code and documentation are embedded and stored in Pinecone
-3. **Contextual Retrieval**: User queries trigger semantic search to find relevant context
-4. **Intelligent Responses**: The LLM receives carefully selected context to generate accurate answers
+1. **Repository Indexing**:
+   - When a user mentions a GitHub repository, the system checks if it's already indexed
+   - If not indexed, it automatically fetches the repository structure via GitHub API
+   - Files are processed to generate embeddings using the `Xenova/all-mpnet-base-v2` model
+   - Embeddings and metadata are stored in Pinecone for efficient retrieval
 
-## Tech Stack
-
-- **Frontend**: Next.js with React and TypeScript
-- **Vector Database**: Pinecone for efficient semantic search
-- **LLM Provider**: Groq API (Llama-3.3-70b-versatile model)
-- **GitHub Integration**: Octokit for repository access
-- **Embeddings**: Integration with embedding models for semantic search
+2. **Question Answering**:
+   - User queries are analyzed to determine intent and identify potential file references
+   - The system performs semantic search against the repository's embeddings
+   - Relevant files are intelligently ranked and selected as context
+   - A prompt is constructed with the selected context and sent to the Groq LLM
+   - The LLM generates a detailed response based on the provided context
 
 ## Environment Setup
 
@@ -77,33 +101,30 @@ GROQ_API_KEY=your_groq_api_key
 
 5. Open [http://localhost:3000](http://localhost:3000) to see the application
 
-### Production Deployment
-
-#### Deploy on Vercel (Recommended)
+### Production Deployment on Vercel
 
 1. Push your code to a GitHub repository
+   - **Important**: Make sure to add `/public/models/` to your `.gitignore` file to prevent large model files from being committed
+   - The application will download the model files at runtime when needed
 
 2. Visit [Vercel](https://vercel.com/new) and import your GitHub repository
 
-3. Add the environment variables in the Vercel project settings
+3. Add the environment variables in the Vercel project settings:
+   - `PINECONE_API_KEY`
+   - `GITHUB_TOKEN`
+   - `GROQ_API_KEY`
 
-4. Deploy with the default settings
+4. Configure Vercel Function Settings (optional but recommended):
+   - Increase the Function Execution Timeout to at least 60 seconds
+   - Increase the Maximum Function Size to accommodate model loading
 
-#### Manual Deployment
+5. Deploy with the default settings
 
-1. Build the application:
-   ```bash
-   npm run build
-   # or
-   yarn build
-   ```
-
-2. Start the production server:
-   ```bash
-   npm start
-   # or
-   yarn start
-   ```
+6. **Note about first-time usage**: The first query for a repository might take longer as it needs to:
+   1. Index the repository if it's not already indexed
+   2. Download the embedding model from HuggingFace if it's not cached
+   
+   Subsequent queries will be much faster as both the repository data and model will be cached.
 
 ## Usage
 
@@ -116,6 +137,29 @@ GROQ_API_KEY=your_groq_api_key
    - "Show me the main entry point"
 
 The system will automatically index the repository (if needed) and provide detailed answers based on the actual code.
+
+## Technical Details
+
+### Embedding Model
+The application uses the `Xenova/all-mpnet-base-v2` model from HuggingFace for generating embeddings. This model:
+- Is dynamically downloaded at runtime through the `@xenova/transformers` library
+- Does not need to be included in the repository, reducing Git repository size
+- Gets cached in the server environment after the first use
+- Works seamlessly in both local and serverless environments
+
+### Vector Storage
+Pinecone is used for storing and retrieving vectors. The application:
+- Creates a namespace for each repository (format: `owner/repo`)
+- Stores file content, metadata, and embeddings for each document
+- Handles metadata size limits automatically
+- Optimizes query results based on relevance and file importance
+
+### LLM Integration
+The application uses Groq's Llama-3.3-70b-versatile model for answer generation:
+- Creates context-aware prompts with relevant repository information
+- Handles conversation history for better follow-up questions
+- Optimizes token usage to stay within API limits
+- Provides detailed, code-aware answers with proper formatting
 
 ## License
 
